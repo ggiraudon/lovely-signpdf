@@ -1,5 +1,6 @@
 package com.lovelysystems.signpdf
 
+import PDF
 import com.lovelysystems.signpdf.signer.getSigner
 import io.ktor.application.Application
 import io.ktor.application.call
@@ -31,6 +32,7 @@ fun Application.main() {
     install(DefaultHeaders)
     install(CallLogging)
     val config = environment.config.config("signer")
+    val backgroundImagePath = config.property("backgroundImagePath").getString()
     val signer = getSigner(config)
 
     routing {
@@ -43,7 +45,9 @@ fun Application.main() {
                 var location: String? = null
                 var reason: String? = null
                 var contactInfo: String? = null
+                var ipAddress: String? = null
                 var content: ByteArray? = null
+                var signaturecontent: ByteArray? = null
 
                 val failures = arrayListOf<String>()
 
@@ -55,6 +59,7 @@ fun Application.main() {
                                 "location" -> location = part.value
                                 "reason" -> reason = part.value
                                 "contactInfo" -> contactInfo = part.value
+                                "ipAddress" -> ipAddress = part.value
                                 else -> failures.add("Unknown form field ${part.name}")
                             }
                         is PartData.FileItem ->
@@ -62,7 +67,14 @@ fun Application.main() {
                                 part.streamProvider().use {
                                     content = it.readBytes()
                                 }
-                            } else {
+
+                            } else if  (part.name == "signature_image") {
+                                part.streamProvider().use {
+                                    signaturecontent = it.readBytes()
+                                }
+
+                            }
+                            else {
                                 failures.add("Unknown file field ${part.name}")
                             }
                     }
@@ -75,7 +87,7 @@ fun Application.main() {
                     call.respond(HttpStatusCode.BadRequest, failures.joinToString("\n"))
                 } else {
                     val output = ByteArrayOutputStream()
-                    val pdf = PDF(content!!.inputStream(), output, name!!, reason!!, location!!, contactInfo!!);
+                    val pdf = PDF(content!!.inputStream(), output, name!!, reason!!, location!!, contactInfo!!, ipAddress!!,backgroundImagePath,signaturecontent!!.inputStream());
                     pdf.sign(signer)
                     pdf.close()
                     call.respond(PDFContent(output.toByteArray()))
